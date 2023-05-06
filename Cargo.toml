@@ -1,0 +1,9 @@
+[package]
+name = "yt-rss"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rss = "2.0.1"
+actix-web = "4.2.1"
+cached = "0.43.0"
