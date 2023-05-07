@@ -27,7 +27,7 @@ async fn rss(handle: Path<String>) -> HttpResponse {
 				.title(handle.clone())
 				.link(format!("https://www.youtube.com/{}", handle.clone()))
 				.description("Feed".to_string())
-				.items(youtube::ids(handle.clone(), 8)
+				.items(youtube::ids(handle.clone(), 30)
 					.into_iter()
 					.parallel_map(item)
 					.collect::<Vec<Item>>()
@@ -49,7 +49,10 @@ async fn source(id: Path<String>) -> HttpResponse {
 fn item(id: String) -> Item { 
 	let info = youtube::info(id);
 	let content: String = format!(
-	"<video controls poster=\"https://i.ytimg.com/vi/{}/maxresdefault.jpg\"><source src=\"https://levitatingpineapple.com/yt-rss/source/{}\"></video></hr><p>{}</p>",
+r#"<video controls poster="https://i.ytimg.com/vi/{}/maxresdefault.jpg">
+	<source src="https://levitatingpineapple.com/yt-rss/source/{}">
+</video>
+<p>{}</p>"#,
 		info.id,
 		info.id,
 		info.description
@@ -60,7 +63,7 @@ fn item(id: String) -> Item {
 		);
 	ItemBuilder::default()
 		.title(Some(info.title))
-		.link(Some(format!("youtu.be/{}", info.id).to_string()))
+		.link(Some(format!("https://youtu.be/{}", info.id).to_string()))
 		.guid(Some(Guid { value: info.id, permalink: false }))
 		.pub_date(pub_date)
 		.description(Some(info.description))

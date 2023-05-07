@@ -9,16 +9,18 @@ pub struct Info {
 }
 
 pub fn ids(handle: String, max: u32) -> Vec<String> {
-Command::new("yt-dlp")
-	.args([
-		"--flat-playlist",
-		"--print", "%(id)s",
-		"--playlist-end", &(max).to_string(),
-		format!("https://www.youtube.com/{}" ,handle).as_str()
-	])
-	.output().unwrap()
-	.stdout.lines()
-	.collect::<Result<Vec<String>, std::io::Error>>().unwrap()
+	Command::new("yt-dlp")
+		.args([
+			"--no-check-certificates",
+			"--flat-playlist",
+			"--print", "%(id)s",
+			"--playlist-end", &(max).to_string(),
+			"--match-filter", "original_url!*=/shorts/ & url!*=/shorts/",
+			format!("https://www.youtube.com/{}", handle).as_str()
+		])
+		.output().unwrap()
+		.stdout.lines()
+		.collect::<Result<Vec<String>, std::io::Error>>().unwrap()
 }
 
 pub fn info(id: String) -> Info {
