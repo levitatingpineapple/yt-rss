@@ -1,8 +1,9 @@
 use std::{process::Command, io::{BufRead}};
-use cached::proc_macro::cached;
 
 #[derive(Debug, Clone)]
 pub struct Info {
+	pub id: String,
+	pub date: String,
 	pub title: String,
 	pub description: String
 }
@@ -15,29 +16,28 @@ Command::new("yt-dlp")
 		"--playlist-end", &(max).to_string(),
 		format!("https://www.youtube.com/{}" ,handle).as_str()
 	])
-	.output()
-	.unwrap()
+	.output().unwrap()
 	.stdout.lines()
-	.collect::<Result<Vec<String>, std::io::Error>>()
-	.unwrap()
+	.collect::<Result<Vec<String>, std::io::Error>>().unwrap()
 }
 
-#[cached]
 pub fn info(id: String) -> Info {
-	let stdout_string = String::from_utf8(
-		Command::new("yt-dlp")
+	let command = Command::new("yt-dlp")
 			.args([
-				"--print", "%(title)s\n%(description)s",
-				id.as_str()
+				"--print", "%(title)s\n%(upload_date)s\n%(description)s",
+				format!("https://youtu.be/{}", id.as_str()).as_str()
 			])
-			.output()
-			.unwrap()
-			.stdout
-	).unwrap();
-	let (title, description) = stdout_string
+			.output().unwrap();
+	let output = String::from_utf8(command.stdout).unwrap();
+	let (title, rest) = output
+		.split_once("\n")
+		.unwrap();
+	let (date, description) = rest
 		.split_once("\n")
 		.unwrap();
 	Info {
+		id: id,
+		date: date.to_string(),
 		title: title.to_string(),
 		description: description.to_string()
 	}
@@ -50,8 +50,7 @@ pub fn source(id: String) -> String {
 			"-f", "22,18",
 			id.as_str()
 		])
-		.output()
-		.unwrap()
+		.output().unwrap()
 		.stdout
 		.lines().next().unwrap().unwrap()
 }
