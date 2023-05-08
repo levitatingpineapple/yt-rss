@@ -26,6 +26,7 @@ pub fn ids(handle: String, max: u32) -> Vec<String> {
 pub fn info(id: String) -> Info {
 	let command = Command::new("yt-dlp")
 			.args([
+				"--no-check-certificates",
 				"--print", "%(title)s\n%(upload_date)s\n%(description)s",
 				format!("https://youtu.be/{}", id.as_str()).as_str()
 			])
@@ -48,6 +49,7 @@ pub fn info(id: String) -> Info {
 pub fn source(id: String) -> String {
 	Command::new("yt-dlp")
 		.args([
+			"--no-check-certificates",
 			"--get-url",
 			"-f", "22,18",
 			id.as_str()

@@ -27,7 +27,7 @@ async fn rss(handle: Path<String>) -> HttpResponse {
 				.title(handle.clone())
 				.link(format!("https://www.youtube.com/{}", handle.clone()))
 				.description("Feed".to_string())
-				.items(youtube::ids(handle.clone(), 30)
+				.items(youtube::ids(handle.clone(), 10)
 					.into_iter()
 					.parallel_map(item)
 					.collect::<Vec<Item>>()
