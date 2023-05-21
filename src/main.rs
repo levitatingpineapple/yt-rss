@@ -48,11 +48,12 @@ async fn rss(handle: Path<String>) -> HttpResponse {
 // Regex: Id of the youtube video
 #[get("/yt-rss/{id:[A-Za-z0-9-_.]{11}}")]
 async fn src(id: Path<String>) -> HttpResponse {
+	let id = id.into_inner();
 	let location = Command::new("yt-dlp")
 		.args([
 			"--get-url",
 			"-f", "22,18",
-			id.into_inner().as_str()
+			&format!("https://youtu.be/{id}")
 		])
 		.output().unwrap()
 		.stdout
