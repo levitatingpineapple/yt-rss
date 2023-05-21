@@ -1,72 +1,127 @@
-use actix_web::{web::{Path}, HttpServer, App, HttpResponse, get, http};
-use chrono::NaiveDate;
+use std::{process::Command, io::BufRead};
+use actix_web::{web::Path, HttpResponse, get, http, App, HttpServer};
+use feed_rs::{model::Entry, parser};
+use regex::{Regex};
 use ::rss::{ChannelBuilder, Guid, ItemBuilder, Item};
-use dpc_pariter::IteratorExt as _;
 use cached::proc_macro::cached;
-
-pub mod youtube;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
 	HttpServer::new(move || {
 		App::new()
 			.service(rss)
-			.service(source)
+			.service(src)
 	})
 	.bind(("localhost", 7777))?
 	.run()
 	.await
 }
 
-#[get("/yt-rss/{handle}")]
+// Returns RSS feed for a channel
+// Regex: youtube channel's unique handle
+#[get("/yt-rss/{handle:@[A-Za-z0-9-_.]{3,30}}")]
 async fn rss(handle: Path<String>) -> HttpResponse {
+	let channel_id = channel_id(handle.into_inner());
+	let body = reqwest::get(format!("https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"))
+		.await.unwrap()
+		.text().await.unwrap();
+	let feed = parser::parse(body.as_bytes()).unwrap();
 	HttpResponse::Ok()
 		.content_type(http::header::ContentType::xml())
 		.body(
 			ChannelBuilder::default()
-				.title(handle.clone())
-				.link(format!("https://www.youtube.com/{}", handle.clone()))
-				.description("Feed".to_string())
-				.items(youtube::ids(handle.clone(), 10)
-					.into_iter()
-					.parallel_map(item)
-					.collect::<Vec<Item>>()
+				.title(feed.title.unwrap().content)
+				.link(feed.links.last().unwrap().clone().href)
+				.items(
+					feed.entries
+						.into_iter()
+						.filter_map(|e| item(e))
+						.collect::<Vec<Item>>()
 				)
 				.build()
 				.to_string()
-		)
+	)
 }
 
-#[get("/yt-rss/source/{id}")]
-async fn source(id: Path<String>) -> HttpResponse {
+// Dynamically redirects to source of the video.
+// Valid for few hours. TODO: Add time based caching.
+// Regex: Id of the youtube video
+#[get("/yt-rss/{id:[A-Za-z0-9-_.]{11}}")]
+async fn src(id: Path<String>) -> HttpResponse {
+	let location = Command::new("yt-dlp")
+		.args([
+			"--get-url",
+			"-f", "22,18",
+			id.into_inner().as_str()
+		])
+		.output().unwrap()
+		.stdout
+		.lines().next().unwrap().unwrap();
 	HttpResponse::TemporaryRedirect()
-		.append_header((
-			"location", youtube::source(id.into_inner())
-		)).finish()
+		.append_header(("location", location))
+		.finish()
 }
 
 #[cached]
-fn item(id: String) -> Item { 
-	let info = youtube::info(id);
-	let content: String = format!(
-r#"<video controls poster="https://i.ytimg.com/vi/{}/maxresdefault.jpg">
-	<source src="https://levitatingpineapple.com/yt-rss/source/{}">
-</video>
-<p>{}</p>"#,
-		info.id,
-		info.id,
-		info.description
+fn channel_id(handle: String) -> String {
+	let output = String::from_utf8(
+		Command::new("yt-dlp")
+			.args([
+				"--print", "channel_url",
+				"--playlist-items", "1",
+				&format!("https://www.youtube.com/{handle}")
+			])
+			.output().unwrap()
+			.stdout
+	).unwrap();
+	Regex::new(r#"/([A-Za-z0-9-_]{24})\n"#).expect("Regex is valid")
+		.captures(&output).unwrap()
+		.get(1).unwrap()
+		.as_str().to_string()
+}
+
+// Maps youtube's feed entry to RSS item with html content
+fn item(entry: Entry) -> Option<Item> {
+	let id = entry.id.split(":").last()?.to_string();
+	let description = html_description(
+		&entry.media.first()?.clone().description?.content
 	);
-	let pub_date = NaiveDate::parse_from_str(&info.date, "%Y%m%d").ok()
-		.and_then(|date| 
-			Some(date.format("%a, %d %b %Y 00:00:00 UTC").to_string())
-		);
-	ItemBuilder::default()
-		.title(Some(info.title))
-		.link(Some(format!("https://youtu.be/{}", info.id).to_string()))
-		.guid(Some(Guid { value: info.id, permalink: false }))
-		.pub_date(pub_date)
-		.description(Some(info.description))
-		.content(Some(content))
-		.build()
+	let content: String = format!(
+r#"<video controls poster="https://i.ytimg.com/vi/{id}/maxresdefault.jpg">
+	<source src="https://n0g.rip/yt-rss/{id}">
+</video>
+<p>{description}</p>"#,
+	);
+	println!("{}", content);
+	Some(
+		ItemBuilder::default()
+			.guid(Guid { value: id, permalink: false })
+			.title(entry.title?.content)
+			.link(entry.links.first()?.clone().href)
+			.pub_date(entry.published?.to_rfc2822())
+			.content(content)
+			.build()
+	)
+}
+
+// Formats links and newlines as html
+fn html_description(string: &str) -> String {
+	let link_or_line_break = Regex::new(r#"(https?://[^\s]+|\n)"#).expect("Regex is valid");
+	let mut match_end: usize = 0;
+	let mut html = String::new();
+	link_or_line_break
+		.captures_iter(string)
+		.map(|c| c.get(0).unwrap())
+		.for_each(|regex_match| {
+			let match_string = regex_match.as_str();
+			let replacement = if match_string == "\n" {
+				"<br>".to_string()
+			} else {
+				format!(r#"<a href="{match_string}">{match_string}</a>"#)
+			};
+			html.push_str(&string[match_end..regex_match.start()]);
+			html.push_str(&replacement);
+			match_end = regex_match.end();
+		});
+	html
 }

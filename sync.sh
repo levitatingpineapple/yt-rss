@@ -1,4 +1,5 @@
 rsync \
+	--verbose \
 	--archive \
 	--update \
 	--delete \
@@ -7,4 +8,4 @@ rsync \
 	--exclude '.gitignore' \
 	--exclude '.DS_Store' \
 	--exclude 'sync.sh' \
-	. dendrite@n0g.rip:bot
+	. dendrite@n0g.rip:yt-rss
