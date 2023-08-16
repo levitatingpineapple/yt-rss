@@ -52,7 +52,9 @@ async fn src(id: Path<String>) -> HttpResponse {
 	let location = Command::new("yt-dlp")
 		.args([
 			"--get-url",
-			"-f", "22,18",
+			"--force-ipv4",
+			"--no-warnings",
+			"-f", "22",
 			&format!("https://youtu.be/{id}")
 		])
 		.output().unwrap()
