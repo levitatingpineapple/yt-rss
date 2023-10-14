@@ -1,7 +1,7 @@
 use std::{process::Command, io::BufRead};
 use actix_web::{web::Path, HttpResponse, get, http, App, HttpServer};
 use feed_rs::{model::Entry, parser};
-use regex::{Regex};
+use regex::Regex;
 use ::rss::{ChannelBuilder, Guid, ItemBuilder, Item};
 use cached::proc_macro::cached;
 
@@ -19,7 +19,7 @@ async fn main() -> std::io::Result<()> {
 
 // Returns RSS feed for a channel
 // Regex: youtube channel's unique handle
-#[get("/yt-rss/{handle:@[A-Za-z0-9-_.]{3,30}}")]
+#[get("/{handle:@[A-Za-z0-9-_.]{3,30}}")]
 async fn rss(handle: Path<String>) -> HttpResponse {
 	let channel_id = channel_id(handle.into_inner());
 	let body = reqwest::get(format!("https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"))
@@ -46,7 +46,7 @@ async fn rss(handle: Path<String>) -> HttpResponse {
 // Dynamically redirects to source of the video.
 // Valid for few hours. TODO: Add time based caching.
 // Regex: Id of the youtube video
-#[get("/yt-rss/{id:[A-Za-z0-9-_.]{11}}")]
+#[get("/{id:[A-Za-z0-9-_.]{11}}")]
 async fn src(id: Path<String>) -> HttpResponse {
 	let id = id.into_inner();
 	let location = Command::new("yt-dlp")
@@ -90,12 +90,11 @@ fn item(entry: Entry) -> Option<Item> {
 		&entry.media.first()?.clone().description?.content
 	);
 	let content: String = format!(
-r#"<video controls poster="https://i.ytimg.com/vi/{id}/maxresdefault.jpg">
-	<source src="https://n0g.rip/yt-rss/{id}">
+r#"<video controls width="1280" heigh="720" poster="https://img.youtube.com/vi/{id}/maxresdefault.jpg">
+	<source src="http://localhost:7777/{id}">
 </video>
 <p>{description}</p>"#,
 	);
-	println!("{}", content);
 	Some(
 		ItemBuilder::default()
 			.guid(Guid { value: id, permalink: false })
