@@ -36,4 +36,4 @@ For apple platforms I can recommend [Net News Wire](https://netnewswire.com)
 http://localhost:7777/@Fireship
 ```
 
-![NetNewsWire](nnw.webp)
+![NetNewsWire](assets/nnw.webp)
