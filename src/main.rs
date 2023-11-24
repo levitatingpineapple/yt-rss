@@ -2,8 +2,10 @@ use std::{process::Command, io::BufRead};
 use actix_web::{web::Path, HttpResponse, get, http, App, HttpServer};
 use feed_rs::{model::Entry, parser};
 use regex::Regex;
-use ::rss::{ChannelBuilder, Guid, ItemBuilder, Item};
 use cached::proc_macro::cached;
+use serde::Serialize;
+use serde_json;
+
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -12,9 +14,36 @@ async fn main() -> std::io::Result<()> {
 			.service(rss)
 			.service(src)
 	})
-	.bind(("localhost", 7777))?
+	.bind(("localhost", 8080))?
 	.run()
 	.await
+}
+
+#[derive(Serialize)]
+struct Feed {
+	version: String,
+	title: String,
+	home_page_url: String,
+	feed_url: String,
+	// favicon: String,
+	items: Vec<Item>
+}
+
+#[derive(Serialize)]
+struct Item {
+	id: String,
+	url: String,
+	title: String,
+	content_html: String,
+	date_published: String,
+	attachments: Vec<Attachment>
+}
+
+#[derive(Serialize)]
+struct Attachment {
+	url: String,
+	mime_type: String,
+	title: String
 }
 
 // Returns RSS feed for a channel
@@ -25,36 +54,34 @@ async fn rss(handle: Path<String>) -> HttpResponse {
 	let body = reqwest::get(format!("https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"))
 		.await.unwrap()
 		.text().await.unwrap();
-	let feed = parser::parse(body.as_bytes()).unwrap();
+	let atom = parser::parse(body.as_bytes()).unwrap();
+	let output_feed = Feed {
+		version: "https://jsonfeed.org/version/1.1".to_string(),
+		title: atom.title.unwrap().content,
+		home_page_url: "https://www.youtube.com".to_string(),
+		feed_url: atom.links.last().unwrap().clone().href,
+		items: atom.entries
+			.into_iter()
+			.filter_map(|e| item(e))
+			.collect::<Vec<Item>>()
+	};
+	
+
 	HttpResponse::Ok()
 		.content_type(http::header::ContentType::xml())
-		.body(
-			ChannelBuilder::default()
-				.title(feed.title.unwrap().content)
-				.link(feed.links.last().unwrap().clone().href)
-				.items(
-					feed.entries
-						.into_iter()
-						.filter_map(|e| item(e))
-						.collect::<Vec<Item>>()
-				)
-				.build()
-				.to_string()
-	)
+		.body(serde_json::to_string(&output_feed).unwrap())
 }
 
-// Dynamically redirects to source of the video.
-// Valid for few hours. TODO: Add time based caching.
-// Regex: Id of the youtube video
-#[get("/{id:[A-Za-z0-9-_.]{11}}")]
-async fn src(id: Path<String>) -> HttpResponse {
-	let id = id.into_inner();
+#[get("/{id:[A-Za-z0-9-_.]{11}}/{quality:(sd|hd)}")]
+async fn src(path: Path<(String, String)>) -> HttpResponse {
+	let inner = path.into_inner();
+	let id = inner.0;
 	let location = Command::new("yt-dlp")
 		.args([
 			"--get-url",
 			"--force-ipv4",
 			"--no-warnings",
-			"-f", "22",
+			"-f", (if inner.1.as_str() == "sd" {"18"} else {"22"}),
 			&format!("https://youtu.be/{id}")
 		])
 		.output().unwrap()
@@ -89,20 +116,26 @@ fn item(entry: Entry) -> Option<Item> {
 	let description = html_description(
 		&entry.media.first()?.clone().description?.content
 	);
-	let content: String = format!(
-r#"<video controls width="1280" heigh="720" poster="https://img.youtube.com/vi/{id}/maxresdefault.jpg">
-	<source src="http://localhost:7777/{id}">
-</video>
-<p>{description}</p>"#,
-	);
 	Some(
-		ItemBuilder::default()
-			.guid(Guid { value: id, permalink: false })
-			.title(entry.title?.content)
-			.link(entry.links.first()?.clone().href)
-			.pub_date(entry.published?.to_rfc2822())
-			.content(content)
-			.build()
+		Item {
+			id: id.clone(),
+			url: entry.links.first().unwrap().clone().href,
+			title: entry.title.unwrap().content,
+			content_html: description,
+			date_published: entry.published.unwrap().to_rfc3339(),
+			attachments: vec![
+				Attachment { 
+					url: format!("http://localhost:8080/{id}/sd"), 
+					mime_type: "video/mp4".to_string(), 
+					title: "360p".to_string()
+				},
+				Attachment { 
+					url: format!("http://localhost:8080/{id}/hd"), 
+					mime_type: "video/mp4".to_string(), 
+					title: "720p".to_string()
+				}
+			],
+		}
 	)
 }
 
