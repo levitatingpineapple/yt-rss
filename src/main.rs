@@ -47,7 +47,7 @@ async fn src(path: Path<(String, String)>) -> HttpResponse {
 		.finish()
 }
 
-#[cached]
+#[cached(sync_writes = true)]
 async fn channel(handle: String) -> Channel {
 	println!("Channel: {}", handle);
 	let request = reqwest::Client::new()
@@ -69,7 +69,7 @@ async fn channel(handle: String) -> Channel {
 }
 
 // Fetch new feed every 15 minutes
-#[cached(time=900)]
+#[cached(time=900, sync_writes = true)]
 async fn json_feed(channel: Channel) -> Vec<u8> {
 	println!("Feed: {}", channel.feed);
 	serde_json::to_vec(
@@ -85,7 +85,7 @@ async fn json_feed(channel: Channel) -> Vec<u8> {
 }
 
 // Video sources should be valid for 6 hours
-#[cached(time=20_000)]
+#[cached(time=20_000, sync_writes = true)]
 fn sources(id: String) -> Vec<String> {
 	println!("Source: {}", id);
 	Command::new("yt-dlp")
