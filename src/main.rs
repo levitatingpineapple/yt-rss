@@ -81,7 +81,7 @@ async fn channel(handle: String) -> Channel {
 			.expect("Regex is valid")
 			.captures(&request).unwrap()
 			.get(1).unwrap()
-			.as_str().to_string().replace("=s900", "=s64")
+			.as_str().to_string().replace("=s900", "=s128")
 	}
 }
 
@@ -172,11 +172,11 @@ impl Item {
 				content_html: description,
 				date_published: entry.published.unwrap().to_rfc3339(),
 				attachments: vec![
-					Attachment { 
-						url: format!("http://home:8080/sd/{id}"), 
-						mime_type: "video/mp4".to_string(), 
-						title: "SD".to_string()
-					},
+					// Attachment { 
+					// 	url: format!("http://home:8080/sd/{id}"), 
+					// 	mime_type: "video/mp4".to_string(), 
+					// 	title: "SD".to_string()
+					// },
 					Attachment { 
 						url: format!("http://home:8080/hd/{id}"), 
 						mime_type: "video/mp4".to_string(), 
