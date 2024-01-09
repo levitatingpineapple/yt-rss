@@ -178,7 +178,7 @@ impl Item {
 					// 	title: "SD".to_string()
 					// },
 					Attachment { 
-						url: format!("http://home:8080/hd/{id}"), 
+						url: format!("http://127.0.0.1:8080/hd/{id}"), 
 						mime_type: "video/mp4".to_string(), 
 						title: "HD".to_string()
 					}
