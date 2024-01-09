@@ -1,5 +1,5 @@
-use std::{process::Command, io::BufRead};
-use actix_web::{web::Path, HttpResponse, get, http, App, HttpServer};
+use std::{process::Command, io::BufRead, collections::hash_map::DefaultHasher, hash::Hasher};
+use actix_web::{web::Path, HttpResponse, HttpRequest, get, http::{self, header::EntityTag}, App, HttpServer};
 use feed_rs::{model::Entry, parser};
 use regex::Regex;
 use cached::proc_macro::cached;
@@ -13,7 +13,7 @@ async fn main() -> std::io::Result<()> {
 			.service(rss)
 			.service(src)
 	})
-	.bind(("localhost", 8080))?
+	.bind(("127.0.0.1", 8080))?
 	.run()
 	.await
 }
@@ -21,14 +21,31 @@ async fn main() -> std::io::Result<()> {
 // Returns RSS feed for a channel
 // Regex: youtube channel's unique handle
 #[get("/{handle:@[A-Za-z0-9-_.]{3,30}}")]
-async fn rss(handle: Path<String>) -> HttpResponse {
+async fn rss(handle: Path<String>, request: HttpRequest) -> HttpResponse {
+	print!("Request: {:?}", request);
+	
+	// Fetch sources
+	let channel = channel(handle.into_inner()).await;
+	let atom_bytes = atom_bytes(channel.atom.clone()).await;
+	
+	// Calculate hash
+	let mut hasher = DefaultHasher::new();
+	hasher.write(&atom_bytes);
+	let hash = format!("{:x}", hasher.finish());
+	
+	// Check if ETag matches and return 304 if it does
+	if let Some(request_etag) = request.headers().get(http::header::IF_NONE_MATCH) {
+		if request_etag.to_str().unwrap() == format!("{}", EntityTag::new_strong(hash.clone())) {
+			println!("ETAG MATCH");
+			return HttpResponse::NotModified().finish()
+		}
+	}
+	
+	// If not create and return feed
 	HttpResponse::Ok()
 		.content_type(http::header::ContentType::json())
-		.body(
-			json_feed(
-				channel(handle.into_inner()).await
-			).await
-		)
+		.insert_header(http::header::ETag(EntityTag::new_strong(hash)))
+		.body(json_feed(channel, &atom_bytes).await)
 }
 
 #[get("/{quality:(sd|hd)}/{id:[A-Za-z0-9-_.]{11}}")]
@@ -55,7 +72,7 @@ async fn channel(handle: String) -> Channel {
 		.send().await.unwrap()
 		.text().await.unwrap();
 	Channel {
-		feed: Regex::new(r#"<link rel="alternate" type="application/rss\+xml" title="RSS" href="(.*?)">"#)
+		atom: Regex::new(r#"<link rel="alternate" type="application/rss\+xml" title="RSS" href="(.*?)">"#)
 			.expect("Regex is valid")
 			.captures(&request).unwrap()
 			.get(1).unwrap()
@@ -68,18 +85,17 @@ async fn channel(handle: String) -> Channel {
 	}
 }
 
-// Fetch new feed every 15 minutes
 #[cached(time=900, sync_writes = true)]
-async fn json_feed(channel: Channel) -> Vec<u8> {
-	println!("Feed: {}", channel.feed);
+async fn atom_bytes(atom: String) -> actix_web::web::Bytes {
+	reqwest::get(atom).await.unwrap()
+		.bytes().await.unwrap()
+}
+
+async fn json_feed(channel: Channel, atom_bytes: &[u8]) -> Vec<u8> {
 	serde_json::to_vec(
 		&Feed::new(
 			channel.clone(), 
-			parser::parse(
-				reqwest::get(channel.feed).await.unwrap()
-					.text().await.unwrap()
-					.as_bytes()
-			).unwrap()
+			parser::parse(atom_bytes).unwrap()
 		)
 	).unwrap()
 }
@@ -107,7 +123,7 @@ fn sources(id: String) -> Vec<String> {
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 struct Channel {
-	feed: String,
+	atom: String,
 	icon: String
 }
 
@@ -120,12 +136,12 @@ struct Feed {
 }
 
 impl Feed {
-	fn new(channel: Channel, feed: feed_rs::model::Feed) -> Feed {
+	fn new(channel: Channel, atom: feed_rs::model::Feed) -> Feed {
 		Feed {
 			version: "https://jsonfeed.org/version/1.1".to_string(),
-			title: feed.title.unwrap().content,
+			title: atom.title.unwrap().content,
 			favicon: channel.icon,
-			items: feed.entries
+			items: atom.entries
 				.into_iter()
 				.filter_map(|e| Item::new(e))
 				.collect::<Vec<Item>>()
@@ -157,12 +173,12 @@ impl Item {
 				date_published: entry.published.unwrap().to_rfc3339(),
 				attachments: vec![
 					Attachment { 
-						url: format!("http://localhost:8080/sd/{id}"), 
+						url: format!("http://home:8080/sd/{id}"), 
 						mime_type: "video/mp4".to_string(), 
 						title: "SD".to_string()
 					},
 					Attachment { 
-						url: format!("http://localhost:8080/hd/{id}"), 
+						url: format!("http://home:8080/hd/{id}"), 
 						mime_type: "video/mp4".to_string(), 
 						title: "HD".to_string()
 					}
