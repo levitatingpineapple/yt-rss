@@ -5,7 +5,7 @@ This server provides an RSS feed for a given channel. It relies on [yt-dlp](http
 
 ## Install Locally ([Apple Silicon](https://support.apple.com/en-us/HT211814))
 
-I have published an apple arm binary on [Homebrew]( https://brew.sh) for running it locally.
+There is a published apple arm binary on [Homebrew]( https://brew.sh) for running it locally.
 
 ```bash
 # Make sure the package manager is up to date
@@ -21,19 +21,17 @@ brew services start yt-rss
 
 # Check that the service has been started
 brew services list
-
-# Optional: Install RSS reader
-brew install netnewswire
 ```
-
 
 ## Usage
 
-The server runs on port `7777`
-You can subscribe using the handle of the channel in your favourite RSS reader.
-For apple platforms I can recommend [Net News Wire](https://netnewswire.com)
+By default the server runs on port `8080`.\
+You can subscribe using the handle of the channel in rss:
 ```
-http://localhost:7777/@Fireship
+http://localhost:8080/@Fireship
 ```
 
-![NetNewsWire](assets/nnw.webp)
+>:warning: Requires reader which supports [rss enclosures](https://en.wikipedia.org/wiki/RSS_enclosure)\
+>Like the upcoming [Feed Radar](https://github.com/levitatingpineapple/feed-radar/) for example:
+
+![Feed Radar](https://github.com/levitatingpineapple/feed-radar/raw/main/.readme/app.webp)
