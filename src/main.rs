@@ -1,16 +1,11 @@
-use actix_web::{
-	get, http, web::{Data, Path}, App, HttpRequest, HttpResponse, HttpServer
-};
+use actix_web::{http::header::*, web::*, *};
 use cached::proc_macro::cached;
-use clap::{
-	arg,
-	command,
-	Parser,
-};
+use clap::*;
 use feed_rs::parser;
-use serde_json;
 use std::{
-	collections::hash_map::DefaultHasher, hash::Hasher, process::Command
+	collections::hash_map::DefaultHasher, 
+	hash::Hasher, 
+	process::Command
 };
 mod feed;
 use feed::*;
@@ -71,30 +66,27 @@ async fn rss(handle: Path<String>, request: HttpRequest, app_state: Data<AppStat
 	
 	// Check if ETag matches and return 304 (not modified) if it does
 	if let Some(request_etag) = request.headers().get(http::header::IF_NONE_MATCH) {
-		if request_etag.to_str().expect("ETag is ASCII Encoded") == format!("{}", http::header::EntityTag::new_strong(hash.clone())) {
+		if request_etag.to_str().expect("ETag is ASCII Encoded") == format!("{}", EntityTag::new_strong(hash.clone())) {
 			return HttpResponse::NotModified().finish()
 		}
 	}
 	
 	// If not create and return feed
 	HttpResponse::Ok()
-		.content_type(http::header::ContentType::json())
-		.insert_header(http::header::ETag(http::header::EntityTag::new_strong(hash)))
+		.content_type(ContentType::json())
+		.insert_header(ETag(EntityTag::new_strong(hash)))
 		.body(
-			serde_json::to_vec(
-				&Feed::new(
-					channel.clone(), 
-					parser::parse(atom_bytes.as_ref())
-						.expect("YT Atom is valid"),
-					&app_state.host
-				)
-			).unwrap()
+			rss_feed(
+				channel.clone(), 
+				parser::parse(atom_bytes.as_ref()).expect("YT Atom is valid"),
+				&app_state.host
+			)
 		)
 }
 
 // Returns video source
 // Regex: youtube video's unique id
-#[get("/{id:[A-Za-z0-9-_.]{11}}")]
+#[get("/{id:[A-Za-z0-9-_.]{11}}.mp4")]
 async fn src(id: Path<String>) -> HttpResponse {
 	HttpResponse::TemporaryRedirect()
 		.append_header((
@@ -104,6 +96,7 @@ async fn src(id: Path<String>) -> HttpResponse {
 		.finish()
 }
 
+// Resolved handles are cached in memory
 #[cached(sync_writes = true)]
 async fn channel(handle: String) -> Channel {
 	Channel::new(
