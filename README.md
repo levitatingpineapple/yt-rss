@@ -31,7 +31,8 @@ You can subscribe using the handle of the channel in rss:
 http://localhost:8080/@Fireship
 ```
 
->:warning: Requires reader which supports [rss enclosures](https://en.wikipedia.org/wiki/RSS_enclosure)\
->Like the upcoming [Feed Radar](https://github.com/levitatingpineapple/feed-radar/) for example:
+> [!WARNING]  
+> Requires reader which supports [rss enclosures](https://en.wikipedia.org/wiki/RSS_enclosure)\
+> Like the upcoming [Feed Radar](https://github.com/levitatingpineapple/feed-radar/) for example:
 
 ![Feed Radar](https://github.com/levitatingpineapple/feed-radar/raw/main/.readme/app.webp)
