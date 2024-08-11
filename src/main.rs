@@ -123,7 +123,7 @@ fn source(id: String) -> String {
 			"--get-url",
 			"--force-ipv4",
 			"--no-warnings",
-			"-f", "22",
+			"-f", "18",
 			&format!("https://youtu.be/{id}")
 		]).output().unwrap().stdout
 	).unwrap()
