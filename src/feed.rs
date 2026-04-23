@@ -34,7 +34,7 @@ impl Channel {
     }
 }
 
-pub fn rss_feed(channel: Channel, atom: feed_rs::model::Feed, host: &str) -> String {
+pub fn rss_channel(channel: Channel, atom: feed_rs::model::Feed, host: &str) -> rss::Channel {
     ChannelBuilder::default()
         .title(atom.title.unwrap().content)
         .image(ImageBuilder::default().url(channel.icon).build())
@@ -57,7 +57,7 @@ pub fn rss_feed(channel: Channel, atom: feed_rs::model::Feed, host: &str) -> Str
                             .pub_date(e.published?.to_rfc2822())
                             .enclosure(
                                 EnclosureBuilder::default()
-                                    .url(format!("{}/{}.mp4", host, id))
+                                    .url(format!("{}/{}", host, id))
                                     .mime_type("video/mp4")
                                     .build(),
                             )
@@ -67,7 +67,6 @@ pub fn rss_feed(channel: Channel, atom: feed_rs::model::Feed, host: &str) -> Str
                 .collect::<Vec<rss::Item>>(),
         )
         .build()
-        .to_string()
 }
 
 // Makes links clickable and formats line breaks
