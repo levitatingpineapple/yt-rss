@@ -1,4 +1,5 @@
 use cached::proc_macro::cached;
+use colored::Colorize;
 use feed_rs::parser::parse;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -53,7 +54,7 @@ struct ChannelURLs {
 
 #[cached(sync_writes = "default")]
 async fn fetch_urls(handle: Handle) -> Result<ChannelURLs, FeedErr> {
-    info!("Fetching URLs for: {handle}");
+    info!("{handle} Fetching URLs");
     let text = reqwest::Client::new()
         .get(format!("https://www.youtube.com/{handle}"))
         .send()
@@ -63,7 +64,7 @@ async fn fetch_urls(handle: Handle) -> Result<ChannelURLs, FeedErr> {
         .await
         .map_err(|e| FeedErr::Reqwest(e.to_string()))?;
     let document = Html::parse_document(&text);
-    Ok(ChannelURLs {
+    let urls = ChannelURLs {
         feed: document
             .select(&RSS_SEL)
             .next()
@@ -76,7 +77,9 @@ async fn fetch_urls(handle: Handle) -> Result<ChannelURLs, FeedErr> {
             .and_then(|el| el.value().attr("content"))
             .ok_or(FeedErr::IconNotFound)?
             .replace("=s900", "=s128"),
-    })
+    };
+    info! {"{} extracted", handle.to_string().red()}
+    Ok(urls)
 }
 
 #[derive(Clone)]
