@@ -146,7 +146,7 @@ pub async fn fetch_feed(handle: Handle, host: String) -> Result<RssFeed, FeedErr
                                 value: id.clone(),
                                 permalink: false,
                             })
-                            // .link(e.links.first()?.clone().href)
+                            .link(format!("{}/to/{}", host, id))
                             .title(e.title?.content)
                             .content(html_description(
                                 &e.media.first()?.clone().description?.content,

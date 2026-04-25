@@ -79,6 +79,7 @@ async fn main() -> std::io::Result<()> {
     };
     let app = Router::new()
         .route("/{segment}", get(dispatch))
+        .route("/to/{video_id}", get(redirect_to_youtube))
         .with_state(data);
     let addr = format!("{}:{}", args.bind, args.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
@@ -119,6 +120,13 @@ async fn dispatch(
             Ok(Redirect::temporary(&source(video_id)).into_response())
         }
     }
+}
+
+async fn redirect_to_youtube(
+    Path(video_id): Path<String>,
+) -> Result<Response, AppError> {
+    let video_id = yt::VideoId::from_str(&video_id)?;
+    Ok(Redirect::permanent(&format!("https://youtu.be/{video_id}")).into_response())
 }
 
 #[derive(Debug, thiserror::Error)]
