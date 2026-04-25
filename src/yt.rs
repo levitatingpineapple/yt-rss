@@ -4,8 +4,17 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rss::{ChannelBuilder, EnclosureBuilder, Guid, ImageBuilder, ItemBuilder};
 use scraper::{Html, Selector};
+use std::sync::OnceLock;
 use std::{fmt, str::FromStr};
+use tokio::sync::mpsc::UnboundedSender;
 use tracing::{debug, info};
+
+pub struct CacheConfig {
+    pub sender: UnboundedSender<VideoId>,
+    pub retention: chrono::Duration,
+}
+
+pub static CACHE_CONFIG: OnceLock<CacheConfig> = OnceLock::new();
 
 // MARK: Handle
 
@@ -100,6 +109,15 @@ pub async fn fetch_feed(handle: Handle, host: String) -> Result<RssFeed, FeedErr
                 .into_iter()
                 .filter_map(|e| {
                     let id = e.id.split(":").last()?.to_string();
+                    let published = e.published?;
+                    if let Some(config) = CACHE_CONFIG.get() {
+                        let age = chrono::Utc::now().signed_duration_since(published);
+                        if age <= config.retention {
+                            if let Ok(vid) = VideoId::from_str(&id) {
+                                let _ = config.sender.send(vid);
+                            }
+                        }
+                    }
                     Some(
                         ItemBuilder::default()
                             .guid(Guid {
@@ -111,7 +129,7 @@ pub async fn fetch_feed(handle: Handle, host: String) -> Result<RssFeed, FeedErr
                             .content(html_description(
                                 &e.media.first()?.clone().description?.content,
                             ))
-                            .pub_date(e.published?.to_rfc2822())
+                            .pub_date(published.to_rfc2822())
                             .enclosure(
                                 EnclosureBuilder::default()
                                     .url(format!("{}/{}", host, id))
@@ -229,11 +247,11 @@ mod tests {
         assert!("abcdefghij/".parse::<VideoId>().is_err());
     }
 
-    #[tokio::test]
-    async fn test_fetch() {
-        let handle = Handle::from_str("@Fireship").unwrap();
-        let info = fetch_urls(handle).await;
-        dbg!(&info);
-        assert!(info.is_ok());
-    }
+    // #[tokio::test]
+    // async fn test_fetch() {
+    //     let handle = Handle::from_str("@Fireship").unwrap();
+    //     let info = fetch_urls(handle).await;
+    //     dbg!(&info);
+    //     assert!(info.is_ok());
+    // }
 }

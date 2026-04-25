@@ -1,17 +1,21 @@
+mod cache;
 mod yt;
 
 use axum::{
     extract::{Path, Request, State},
-    http::{header, StatusCode},
+    http::{header, HeaderValue, StatusCode},
     response::{IntoResponse, Redirect, Response},
     routing::get,
     Router,
 };
-use cached::proc_macro::cached;
+use cache::source;
 use clap::{self, Parser};
-use std::{process::Command, str::FromStr};
+use std::path::PathBuf;
+use std::str::FromStr;
+use tower::ServiceExt;
+use tower_http::services::ServeFile;
 use tracing_subscriber::EnvFilter;
-use yt::{fetch_feed, Handle};
+use yt::{fetch_feed, CacheConfig, Handle, CACHE_CONFIG};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -24,6 +28,10 @@ struct Args {
     host: Option<String>,
     #[arg(long, default_value = "info")]
     log_level: tracing::Level,
+    #[arg(long)]
+    cache_dir: Option<PathBuf>,
+    #[arg(long, default_value_t = 3)]
+    retention_days: i64,
 }
 
 impl Args {
@@ -32,11 +40,18 @@ impl Args {
             .clone()
             .unwrap_or(format!("http://{}:{}", self.bind, self.port))
     }
+
+    fn cache_dir(&self) -> PathBuf {
+        self.cache_dir.clone().unwrap_or(
+            PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".cache/yt-rss"),
+        )
+    }
 }
 
 #[derive(Clone)]
 struct AppState {
     host: String,
+    cache_dir: PathBuf,
 }
 
 #[tokio::main]
@@ -45,7 +60,20 @@ async fn main() -> std::io::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::new(format!("warn,yt_rss={}", args.log_level)))
         .init();
-    let data = AppState { host: args.host() };
+    let cache_dir = args.cache_dir();
+    std::fs::create_dir_all(&cache_dir)?;
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    CACHE_CONFIG
+        .set(CacheConfig {
+            sender: tx,
+            retention: chrono::Duration::days(args.retention_days),
+        })
+        .ok();
+    tokio::spawn(cache::run_consumer(cache_dir.clone(), rx));
+    let data = AppState {
+        host: args.host(),
+        cache_dir,
+    };
     let app = Router::new()
         .route("/{segment}", get(dispatch))
         .with_state(data);
@@ -77,7 +105,16 @@ async fn dispatch(
         }
     } else {
         let video_id = yt::VideoId::from_str(&segment)?;
-        Ok(Redirect::temporary(&source(video_id)).into_response())
+        let path = cache::path(&app_state.cache_dir, &video_id);
+        if path.exists() {
+            let mut response = ServeFile::new(&path).oneshot(request).await.into_response();
+            response
+                .headers_mut()
+                .insert(header::CONTENT_TYPE, HeaderValue::from_static("video/webm"));
+            Ok(response)
+        } else {
+            Ok(Redirect::temporary(&source(video_id)).into_response())
+        }
     }
 }
 
@@ -98,26 +135,4 @@ impl IntoResponse for AppError {
             }
         }
     }
-}
-
-// Video sources should be valid for 6 hours
-#[cached(time = 20_000, sync_writes = "default")]
-fn source(id: yt::VideoId) -> String {
-    String::from_utf8(
-        Command::new("yt-dlp")
-            .args([
-                "--get-url",
-                "--force-ipv4",
-                "--no-warnings",
-                "-f",
-                "18",
-                &format!("https://youtu.be/{}", id),
-            ])
-            .output()
-            .unwrap()
-            .stdout,
-    )
-    .unwrap()
-    .trim_end()
-    .to_string()
 }
