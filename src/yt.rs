@@ -1,3 +1,4 @@
+use crate::log::{self, Ext};
 use cached::proc_macro::cached;
 use colored::Colorize;
 use feed_rs::parser::parse;
@@ -39,6 +40,12 @@ impl fmt::Display for Handle {
     }
 }
 
+impl log::Display for Handle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}", "@".red(), self.0.to_string().bright_red())
+    }
+}
+
 static RSS_SEL: Lazy<Selector> = Lazy::new(|| {
     Selector::parse(r#"link[rel="alternate"][type="application/rss+xml"]"#).expect("valid selector")
 });
@@ -52,9 +59,22 @@ struct ChannelURLs {
     icon: String,
 }
 
+impl log::Display for ChannelURLs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "\n  {} {}\n  {} {}",
+            "feed:".white(),
+            self.feed.blue().underline(),
+            "icon:".white(),
+            self.icon.blue().underline()
+        )
+    }
+}
+
 #[cached(sync_writes = "default")]
 async fn fetch_urls(handle: Handle) -> Result<ChannelURLs, FeedErr> {
-    info!("{handle} Fetching URLs");
+    info!("{} Fetching URLs", handle.log());
     let text = reqwest::Client::new()
         .get(format!("https://www.youtube.com/{handle}"))
         .send()
@@ -78,7 +98,7 @@ async fn fetch_urls(handle: Handle) -> Result<ChannelURLs, FeedErr> {
             .ok_or(FeedErr::IconNotFound)?
             .replace("=s900", "=s128"),
     };
-    info! {"{} extracted", handle.to_string().red()}
+    info! {"{} extracted urls{}", handle.log(), urls.log()}
     Ok(urls)
 }
 
@@ -91,9 +111,8 @@ pub struct RssFeed {
 // Feeds are valid for 15 minutes
 #[cached(time = 900, sync_writes = "default")]
 pub async fn fetch_feed(handle: Handle, host: String) -> Result<RssFeed, FeedErr> {
-    info!("Fetching feed for: {handle}");
+    info!("{} Fetching feed", handle.log());
     let urls = fetch_urls(handle.clone()).await?;
-    info!("Resolved feed: {}", urls.feed);
     let bytes = reqwest::Client::new()
         .get(urls.feed)
         .send()
@@ -147,7 +166,7 @@ pub async fn fetch_feed(handle: Handle, host: String) -> Result<RssFeed, FeedErr
         .build()
         .to_string();
     let etag = format!("\"{:x}\"", md5::compute(&body));
-    info!("Computed ETAG for {}: {}", &handle, &etag);
+    info!("{} ETAG: {}", &handle.log(), &etag.bright_magenta());
     Ok(RssFeed { body: body, etag })
 }
 

@@ -1,4 +1,5 @@
 mod cache;
+mod log;
 mod yt;
 
 use axum::{
@@ -59,6 +60,8 @@ async fn main() -> std::io::Result<()> {
     let args = Args::parse();
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::new(format!("warn,yt_rss={}", args.log_level)))
+        .with_ansi_sanitization(false)
+        .with_ansi(true)
         .init();
     let cache_dir = args.cache_dir();
     std::fs::create_dir_all(&cache_dir)?;
