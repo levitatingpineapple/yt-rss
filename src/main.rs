@@ -20,9 +20,9 @@ use yt::{fetch_feed, CacheConfig, Handle, CACHE_CONFIG};
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    #[arg(long, default_value = "localhost")]
+    #[arg(long, default_value = "127.0.0.1")]
     bind: String,
-    #[arg(long, default_value_t = 8080)]
+    #[arg(long, default_value_t = 9333)]
     port: u16,
     #[arg(long, default_value = None)]
     host: Option<String>,
