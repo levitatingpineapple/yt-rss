@@ -18,3 +18,5 @@ rss = "2.0.12"
 scraper = "0.26.0"
 thiserror = "2.0.18"
 tokio = { version = "1.52.1", features = ["full"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }

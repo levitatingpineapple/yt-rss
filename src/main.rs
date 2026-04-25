@@ -10,6 +10,7 @@ use axum::{
 use cached::proc_macro::cached;
 use clap::{self, Parser};
 use std::{process::Command, str::FromStr};
+use tracing_subscriber::EnvFilter;
 use yt::{fetch_feed, Handle};
 
 #[derive(Parser, Debug)]
@@ -21,6 +22,8 @@ struct Args {
     port: u16,
     #[arg(long, default_value = None)]
     host: Option<String>,
+    #[arg(long, default_value = "info")]
+    log_level: tracing::Level,
 }
 
 impl Args {
@@ -39,6 +42,9 @@ struct AppState {
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     let args = Args::parse();
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::new(format!("warn,yt_rss={}", args.log_level)))
+        .init();
     let data = AppState { host: args.host() };
     let app = Router::new()
         .route("/{segment}", get(dispatch))
@@ -52,34 +58,44 @@ async fn dispatch(
     State(app_state): State<AppState>,
     Path(segment): Path<String>,
     request: Request,
-) -> Response {
+) -> Result<Response, AppError> {
     if segment.starts_with("@") {
-        match Handle::from_str(&segment) {
-            Ok(handle) => match fetch_feed(handle, app_state.host).await {
-                Ok(rss_feed) => {
-                    if request
-                        .headers()
-                        .get(header::IF_NONE_MATCH)
-                        .map(|h| h.to_str().unwrap_or_default())
-                        == Some(&rss_feed.etag)
-                    {
-                        StatusCode::NOT_MODIFIED.into_response()
-                    } else {
-                        Response::builder()
-                            .header(header::CONTENT_TYPE, "application/json")
-                            .header(header::ETAG, rss_feed.etag)
-                            .body(rss_feed.channel.to_string().into())
-                            .unwrap()
-                    }
-                }
-                Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
-            },
-            Err(err) => (StatusCode::BAD_REQUEST, err.to_string()).into_response(),
+        let rss_feed = fetch_feed(Handle::from_str(&segment)?, app_state.host).await?;
+        if request
+            .headers()
+            .get(header::IF_NONE_MATCH)
+            .map(|h| h.to_str().unwrap_or_default())
+            == Some(&rss_feed.etag)
+        {
+            Ok(StatusCode::NOT_MODIFIED.into_response())
+        } else {
+            Ok(Response::builder()
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::ETAG, rss_feed.etag)
+                .body(rss_feed.body.into())
+                .unwrap())
         }
     } else {
-        match yt::VideoId::from_str(&segment) {
-            Ok(video_id) => Redirect::temporary(&source(video_id)).into_response(),
-            Err(err) => (StatusCode::BAD_REQUEST, err.to_string()).into_response(),
+        let video_id = yt::VideoId::from_str(&segment)?;
+        Ok(Redirect::temporary(&source(video_id)).into_response())
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+enum AppError {
+    #[error("{0}")]
+    Id(#[from] yt::IdErr),
+    #[error("{0}")]
+    Feed(#[from] yt::FeedErr),
+}
+
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        match self {
+            AppError::Id(id_err) => (StatusCode::BAD_REQUEST, id_err.to_string()).into_response(),
+            AppError::Feed(feed_err) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, feed_err.to_string()).into_response()
+            }
         }
     }
 }
